@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-// 🔧 ЦЕ ТРЕБА ЗАМІНИТИ НА СВОЇ ДАНІ З FIREBASE CONSOLE
+// 🔧 ЗАЛИШ СВОЇ ДАНІ FIREBASE
 const firebaseConfig = {
   apiKey: "AIzaSyBPUU5pMNosYB1cSF36gTO288eLPRfojXc",
   authDomain: "molytva-f4d28.firebaseapp.com",
@@ -30,53 +30,124 @@ function generateSlots() {
 
 const ALL_SLOTS = generateSlots();
 
-function getTodayKey() {
+function getDateKey(offsetDays = 0) {
   const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
   return `schedule_${d.getFullYear()}_${d.getMonth() + 1}_${d.getDate()}`;
 }
 
-function formatDateUkr() {
+function formatDateUkr(offsetDays = 0) {
   const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
   const days = ["неділя","понеділок","вівторок","середа","четвер","п'ятниця","субота"];
   const months = ["січня","лютого","березня","квітня","травня","червня","липня","серпня","вересня","жовтня","листопада","грудня"];
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()} (${days[d.getDay()]})`;
 }
 
+function getShortDateUkr(offsetDays = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const days = ["нд","пн","вт","ср","чт","пт","сб"];
+  const months = ["січ","лют","бер","кві","тра","чер","лип","сер","вер","жов","лис","гру"];
+  return `${d.getDate()} ${months[d.getMonth()]} (${days[d.getDay()]})`;
+}
+
+// Унікальний ID пристрою — зберігається назавжди в localStorage
+function getDeviceId() {
+  let id = localStorage.getItem("device_id");
+  if (!id) {
+    id = "dev_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem("device_id", id);
+  }
+  return id;
+}
+
+// Які слоти МІЙ пристрій займає — прив'язано до дати щоб на новий день скидалось
+function getMySlots(dateKey) {
+  try {
+    const raw = localStorage.getItem(`my_slots_${dateKey}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function addMySlot(dateKey, slot) {
+  const slots = getMySlots(dateKey);
+  if (!slots.includes(slot)) {
+    slots.push(slot);
+    localStorage.setItem(`my_slots_${dateKey}`, JSON.stringify(slots));
+  }
+}
+
+function removeMySlot(dateKey, slot) {
+  const slots = getMySlots(dateKey).filter(s => s !== slot);
+  localStorage.setItem(`my_slots_${dateKey}`, JSON.stringify(slots));
+}
+
+function shouldShowTomorrow() {
+  return new Date().getHours() >= 20;
+}
+
 export default function App() {
-  const [schedule, setSchedule] = useState({});
+  const [scheduleToday, setScheduleToday] = useState({});
+  const [scheduleTomorrow, setScheduleTomorrow] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [selectedAction, setSelectedAction] = useState(null);
+  const [selectedDayOffset, setSelectedDayOffset] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminInput, setAdminInput] = useState("");
   const [showAdmin, setShowAdmin] = useState(false);
   const [copied, setCopied] = useState(false);
   const [view, setView] = useState("today");
+  const [activeTab, setActiveTab] = useState(0);
   const [notification, setNotification] = useState(null);
+  const [, forceUpdate] = useState(0);
 
-  const todayKey = getTodayKey();
+  const todayKey = getDateKey(0);
+  const tomorrowKey = getDateKey(1);
+  const showTomorrow = shouldShowTomorrow();
+  const deviceId = getDeviceId();
 
   const notify = (msg, type = "success") => {
     setNotification({ msg, type });
     setTimeout(() => setNotification(null), 3000);
   };
 
-  // Слухаємо зміни в Firebase в реальному часі
   useEffect(() => {
-    const dbRef = ref(db, todayKey);
-    const unsub = onValue(dbRef, (snapshot) => {
-      setSchedule(snapshot.val() || {});
-      setLoading(false);
-    });
-    return () => unsub();
-  }, [todayKey]);
+    let loaded = 0;
+    const done = () => { if (++loaded >= 2) setLoading(false); };
+    const u1 = onValue(ref(db, todayKey), snap => { setScheduleToday(snap.val() || {}); done(); });
+    const u2 = onValue(ref(db, tomorrowKey), snap => { setScheduleTomorrow(snap.val() || {}); done(); });
+    return () => { u1(); u2(); };
+  }, [todayKey, tomorrowKey]);
+
+  const currentOffset = activeTab;
+  const currentKey = activeTab === 0 ? todayKey : tomorrowKey;
+  const currentSchedule = activeTab === 0 ? scheduleToday : scheduleTomorrow;
+  const mySlots = getMySlots(currentKey);
+
+  const handleSlotClick = (slot) => {
+    const occupied = !!currentSchedule[slot];
+    const isMine = mySlots.includes(slot);
+
+    if (occupied && !isMine && !isAdmin) {
+      notify("⛔ Скасувати може тільки та людина, яка записалась", "error");
+      return;
+    }
+    setSelectedSlot(slot);
+    setSelectedDayOffset(activeTab);
+    setSelectedAction(occupied ? "cancel" : "book");
+  };
 
   const handleBook = async () => {
     const slot = selectedSlot;
+    const key = selectedDayOffset === 0 ? todayKey : tomorrowKey;
     setSelectedSlot(null);
     try {
-      await set(ref(db, `${todayKey}/${slot}`), true);
-      notify(`✅ Записано на ${slot}`);
+      await set(ref(db, `${key}/${slot}`), { bookedBy: deviceId });
+      addMySlot(key, slot);
+      forceUpdate(n => n + 1);
+      notify(`✅ Записано на ${slot} (${selectedDayOffset === 0 ? "сьогодні" : "завтра"})`);
     } catch {
       notify("Помилка. Спробуйте ще раз", "error");
     }
@@ -84,9 +155,12 @@ export default function App() {
 
   const handleCancel = async () => {
     const slot = selectedSlot;
+    const key = selectedDayOffset === 0 ? todayKey : tomorrowKey;
     setSelectedSlot(null);
     try {
-      await remove(ref(db, `${todayKey}/${slot}`));
+      await remove(ref(db, `${key}/${slot}`));
+      removeMySlot(key, slot);
+      forceUpdate(n => n + 1);
       notify(`Час ${slot} звільнено`);
     } catch {
       notify("Помилка. Спробуйте ще раз", "error");
@@ -105,9 +179,10 @@ export default function App() {
   };
 
   const generateViberText = () => {
-    let text = `🙏 МОЛИТОВНА СТОРОЖА\n📅 ${formatDateUkr()}\n\n`;
+    const sched = activeTab === 0 ? scheduleToday : scheduleTomorrow;
+    let text = `🙏 МОЛИТОВНА СТОРОЖА\n📅 ${formatDateUkr(activeTab)}\n\n`;
     ALL_SLOTS.forEach(slot => {
-      text += `${slot}  ${schedule[slot] ? "✅" : "—"}\n`;
+      text += `${slot}  ${sched[slot] ? "✅" : "—"}\n`;
     });
     text += "\n✨ Слава Ісусу Христу!";
     return text;
@@ -120,10 +195,39 @@ export default function App() {
     });
   };
 
-  const filledCount = Object.keys(schedule).length;
-  const displaySlots = view === "today"
-    ? ALL_SLOTS.filter(s => parseInt(s.split(":")[0]) >= new Date().getHours() - 1)
-    : ALL_SLOTS;
+  const filledToday = Object.keys(scheduleToday).length;
+  const filledTomorrow = Object.keys(scheduleTomorrow).length;
+  const filledCurrent = activeTab === 0 ? filledToday : filledTomorrow;
+
+  // Слоти для відображення: сьогодні з поточного часу АБО весь день
+  // Після 23:40 сьогодні — додаємо роздільник і слоти завтра
+  const buildDisplaySlots = () => {
+    if (activeTab === 1) return ALL_SLOTS.map(s => ({ slot: s, isNextDay: false }));
+
+    const nowHour = new Date().getHours();
+    let todaySlots = view === "today"
+      ? ALL_SLOTS.filter(s => parseInt(s.split(":")[0]) >= nowHour - 1)
+      : ALL_SLOTS;
+
+    const result = todaySlots.map(s => ({ slot: s, isNextDay: false }));
+
+    // Після 20:00 додаємо слоти наступного дня після роздільника
+    if (showTomorrow) {
+      result.push({ slot: null, isNextDay: true, isDivider: true }); // роздільник
+      ALL_SLOTS.forEach(s => result.push({ slot: s, isNextDay: true }));
+    }
+
+    return result;
+  };
+
+  const displayItems = buildDisplaySlots();
+
+  const getSlotSchedule = (isNextDay) => isNextDay
+    ? scheduleTomorrow
+    : (activeTab === 0 ? scheduleToday : scheduleTomorrow);
+
+  const getSlotKey = (isNextDay) => isNextDay ? tomorrowKey : currentKey;
+  const getSlotMySlots = (isNextDay) => getMySlots(getSlotKey(isNextDay));
 
   if (loading) {
     return (
@@ -147,7 +251,7 @@ export default function App() {
           <span style={{ fontSize: 28 }}>✝</span>
           <div style={{ flex: 1 }}>
             <h1 style={S.title}>Молитовна Сторожа</h1>
-            <p style={S.subtitle}>{formatDateUkr()}</p>
+            <p style={S.subtitle}>{formatDateUkr(activeTab)}</p>
           </div>
           <button
             style={{ ...S.adminBtn, background: isAdmin ? "#f39c12" : "rgba(255,255,255,0.18)" }}
@@ -155,11 +259,7 @@ export default function App() {
           >{isAdmin ? "👑" : "🔒"}</button>
         </div>
         <div style={S.stats}>
-          {[
-            { n: filledCount, l: "Зайнято" },
-            { n: ALL_SLOTS.length - filledCount, l: "Вільно" },
-            { n: ALL_SLOTS.length, l: "Всього" },
-          ].map(({ n, l }) => (
+          {[{ n: filledCurrent, l: "Зайнято" }, { n: ALL_SLOTS.length - filledCurrent, l: "Вільно" }, { n: ALL_SLOTS.length, l: "Всього" }].map(({ n, l }) => (
             <div key={l} style={S.statBox}>
               <span style={S.statNum}>{n}</span>
               <span style={S.statLabel}>{l}</span>
@@ -168,21 +268,63 @@ export default function App() {
         </div>
       </header>
 
-      <div style={S.toggleRow}>
-        {["today", "all"].map(v => (
-          <button key={v} style={{ ...S.toggleBtn, ...(view === v ? S.toggleActive : {}) }} onClick={() => setView(v)}>
-            {v === "today" ? "З поточного часу" : "Весь день"}
-          </button>
-        ))}
-      </div>
+      {/* Перемикач часу — тільки для сьогоднішньої вкладки */}
+      {activeTab === 0 && (
+        <div style={S.toggleRow}>
+          {["today", "all"].map(v => (
+            <button key={v} style={{ ...S.toggleBtn, ...(view === v ? S.toggleActive : {}) }} onClick={() => setView(v)}>
+              {v === "today" ? "З поточного часу" : "Весь день"}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={S.grid}>
-        {displaySlots.map(slot => {
-          const occupied = !!schedule[slot];
+        {displayItems.map((item, idx) => {
+          // Роздільник між днями
+          if (item.isDivider) {
+            return (
+              <div key="divider" style={S.divider}>
+                <div style={S.dividerLine} />
+                <span style={S.dividerText}>🌙 {getShortDateUkr(1)} — наступний день</span>
+                <div style={S.dividerLine} />
+              </div>
+            );
+          }
+
+          const { slot, isNextDay } = item;
+          const sched = getSlotSchedule(isNextDay);
+          const slotKey = getSlotKey(isNextDay);
+          const mine = getMySlots(slotKey);
+          const occupied = !!sched[slot];
+          const isMine = mine.includes(slot);
+          const dayOffset = isNextDay ? 1 : 0;
+
           return (
-            <div key={slot} style={occupied ? S.slotOccupied : S.slotFree} onClick={() => { setSelectedSlot(slot); setSelectedAction(occupied ? "cancel" : "book"); }}>
+            <div
+              key={`${isNextDay ? "tmr" : "tdy"}-${slot}`}
+              style={{
+                ...( occupied ? S.slotOccupied : S.slotFree ),
+                opacity: isNextDay ? 0.92 : 1,
+              }}
+              onClick={() => {
+                if (occupied && !isMine && !isAdmin) {
+                  notify("⛔ Скасувати може тільки та людина, яка записалась", "error");
+                  return;
+                }
+                setSelectedSlot(slot);
+                setSelectedDayOffset(dayOffset);
+                setSelectedAction(occupied ? "cancel" : "book");
+              }}
+            >
               <span style={{ ...S.slotTime, color: occupied ? "#fff" : "#5b4a8a" }}>{slot}</span>
-              <span style={S.slotIcon}>{occupied ? "✅" : <span style={{ color: "#c0b8d8", fontSize: 20, fontWeight: 700 }}>—</span>}</span>
+              {isMine && !occupied && null}
+              <span style={S.slotIcon}>
+                {occupied
+                  ? (isMine ? <span title="Ваш запис">✅ 👤</span> : "✅")
+                  : <span style={{ color: "#c0b8d8", fontSize: 20, fontWeight: 700 }}>—</span>
+                }
+              </span>
             </div>
           );
         })}
@@ -199,10 +341,14 @@ export default function App() {
         <div style={S.overlay} onClick={() => setSelectedSlot(null)}>
           <div style={S.modal} onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 42, marginBottom: 8 }}>{selectedAction === "book" ? "🙏" : "❓"}</div>
-            <h3 style={S.modalTitle}>{selectedAction === "book" ? "Записатись на молитву?" : "Скасувати запис?"}</h3>
-            <p style={{ fontSize: 40, fontWeight: 900, color: "#5b4a8a", margin: "0 0 8px", fontVariantNumeric: "tabular-nums" }}>{selectedSlot}</p>
-            <p style={{ fontSize: 14, color: "#999", margin: "0 0 22px" }}>
-              {selectedAction === "book" ? "Ви берете цей час молитви на себе" : "Цей час знову стане вільним"}
+            <h3 style={S.modalTitle}>
+              {selectedAction === "book" ? "Записатись на молитву?" : "Скасувати запис?"}
+            </h3>
+            <p style={{ fontSize: 40, fontWeight: 900, color: "#5b4a8a", margin: "0 0 4px", fontVariantNumeric: "tabular-nums" }}>
+              {selectedSlot}
+            </p>
+            <p style={{ fontSize: 13, color: "#888", margin: "0 0 20px" }}>
+              {selectedDayOffset === 0 ? `📅 Сьогодні — ${formatDateUkr(0)}` : `🌙 Завтра — ${formatDateUkr(1)}`}
             </p>
             <div style={S.modalBtns}>
               <button style={S.btnSecondary} onClick={() => setSelectedSlot(null)}>Ні</button>
@@ -221,7 +367,8 @@ export default function App() {
             <div style={{ fontSize: 42, marginBottom: 8 }}>🔒</div>
             <h3 style={S.modalTitle}>Адмін-доступ</h3>
             <input style={S.input} type="password" placeholder="Пароль" value={adminInput}
-              onChange={e => setAdminInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAdminLogin()} autoFocus />
+              onChange={e => setAdminInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleAdminLogin()} autoFocus />
             <div style={S.modalBtns}>
               <button style={S.btnSecondary} onClick={() => setShowAdmin(false)}>Скасувати</button>
               <button style={S.btnPurple} onClick={handleAdminLogin}>Увійти</button>
@@ -239,7 +386,7 @@ const S = {
   notif: { position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", color: "#fff", padding: "10px 28px", borderRadius: 24, zIndex: 1000, fontWeight: 700, fontSize: 15, boxShadow: "0 4px 24px rgba(0,0,0,0.18)", whiteSpace: "nowrap" },
   header: { background: "linear-gradient(135deg, #5b4a8a 0%, #8b6fc5 100%)", color: "#fff", padding: "22px 16px 18px", borderRadius: "0 0 28px 28px", marginBottom: 14, boxShadow: "0 6px 24px rgba(91,74,138,0.25)" },
   headerTop: { display: "flex", alignItems: "center", gap: 10, marginBottom: 16 },
-  title: { margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: 0.3 },
+  title: { margin: 0, fontSize: 20, fontWeight: 800 },
   subtitle: { margin: "3px 0 0", fontSize: 12, opacity: 0.8 },
   adminBtn: { border: "none", borderRadius: 12, padding: "8px 13px", fontSize: 18, cursor: "pointer", color: "#fff" },
   stats: { display: "flex", gap: 8 },
@@ -254,6 +401,11 @@ const S = {
   slotOccupied: { display: "flex", alignItems: "center", padding: "11px 18px", borderRadius: 14, background: "linear-gradient(135deg, #1db954 0%, #17a349 100%)", border: "1.5px solid #17a349", cursor: "pointer", boxShadow: "0 3px 12px rgba(29,185,84,0.30)" },
   slotTime: { fontWeight: 700, fontSize: 16, width: 54, flexShrink: 0, fontVariantNumeric: "tabular-nums" },
   slotIcon: { fontSize: 20, marginLeft: 10 },
+
+  divider: { display: "flex", alignItems: "center", gap: 8, margin: "10px 0 6px" },
+  dividerLine: { flex: 1, height: 1, background: "#c9bfe0" },
+  dividerText: { fontSize: 12, color: "#7c6fa0", fontWeight: 600, whiteSpace: "nowrap" },
+
   copySection: { position: "fixed", bottom: 0, left: 0, right: 0, padding: "10px 16px 26px", background: "linear-gradient(to top, #eeeaf6 70%, transparent)" },
   copyBtn: { width: "100%", padding: "15px", background: "linear-gradient(135deg, #5b4a8a, #8b6fc5)", color: "#fff", border: "none", borderRadius: 16, fontSize: 16, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 18px rgba(91,74,138,0.35)" },
   copyHint: { textAlign: "center", fontSize: 12, color: "#9e8dc0", margin: "6px 0 0" },
