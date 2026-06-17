@@ -347,13 +347,7 @@ export default function App() {
           );
         })}
       </div>
-
-      <div style={S.copySection}>
-        <button style={S.copyBtn} onClick={() => navigator.clipboard.writeText(generateViberText()).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); })}>
-          {copied ? "✅ Скопійовано!" : "📋 Скопіювати для Viber"}
-        </button>
-        <p style={S.copyHint}>Готовий текст розкладу для вставки у Viber</p>
-      </div>
+      
 
       {/* Модал вводу імені */}
       {showNameModal && (
@@ -492,7 +486,7 @@ export default function App() {
 }
 
 const S = {
-  page: { minHeight: "100vh", background: "#eeeaf6", fontFamily: "'Segoe UI', system-ui, sans-serif", paddingBottom: 110 },
+  page: { minHeight: "100vh", background: "#eeeaf6", fontFamily: "'Segoe UI', system-ui, sans-serif", paddingBottom: 20 },
   loadingWrap: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#eeeaf6" },
   notif: { position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", color: "#fff", padding: "10px 28px", borderRadius: 24, zIndex: 1000, fontWeight: 700, fontSize: 15, boxShadow: "0 4px 24px rgba(0,0,0,0.18)", whiteSpace: "nowrap" },
   header: { background: "linear-gradient(135deg, #5b4a8a 0%, #8b6fc5 100%)", color: "#fff", padding: "22px 16px 18px", borderRadius: "0 0 28px 28px", marginBottom: 14, boxShadow: "0 6px 24px rgba(91,74,138,0.25)" },
@@ -518,9 +512,6 @@ const S = {
   divider: { display: "flex", alignItems: "center", gap: 8, margin: "10px 0 4px" },
   dividerLine: { flex: 1, height: 1, background: "#c9bfe0" },
   dividerText: { fontSize: 12, color: "#7c6fa0", fontWeight: 600, whiteSpace: "nowrap" },
-  copySection: { position: "fixed", bottom: 0, left: 0, right: 0, padding: "10px 16px 26px", background: "linear-gradient(to top, #eeeaf6 70%, transparent)" },
-  copyBtn: { width: "100%", padding: "15px", background: "linear-gradient(135deg, #5b4a8a, #8b6fc5)", color: "#fff", border: "none", borderRadius: 16, fontSize: 16, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 18px rgba(91,74,138,0.35)" },
-  copyHint: { textAlign: "center", fontSize: 12, color: "#9e8dc0", margin: "6px 0 0" },
   overlay: { position: "fixed", inset: 0, background: "rgba(30,20,60,0.45)", display: "flex", alignItems: "flex-end", zIndex: 500 },
   modal: { background: "#fff", borderRadius: "26px 26px 0 0", padding: "28px 20px 42px", width: "100%", boxShadow: "0 -8px 40px rgba(0,0,0,0.15)", textAlign: "center" },
   modalTitle: { margin: "0 0 4px", fontSize: 19, color: "#5b4a8a", fontWeight: 700 },
