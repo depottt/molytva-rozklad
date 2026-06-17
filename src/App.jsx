@@ -4,10 +4,13 @@ import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/
 import { BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 const firebaseConfig = {
-  apiKey: "ТВІЙ_API_KEY",
-  authDomain: "ТВІЙ_PROJECT.firebaseapp.com",
-  databaseURL: "https://ТВІЙ_PROJECT-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "ТВІЙ_PROJECT",
+  apiKey: "AIzaSyBPUU5pMNosYB1cSF36gTO288eLPRfojXc",
+  authDomain: "molytva-f4d28.firebaseapp.com",
+  databaseURL: "https://molytva-f4d28-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "molytva-f4d28",
+  storageBucket: "molytva-f4d28.firebasestorage.app",
+  messagingSenderId: "892185157587",
+  appId: "1:892185157587:web:21215b4f62ca93dfcf703b"
 };
 
 const app = initializeApp(firebaseConfig);
