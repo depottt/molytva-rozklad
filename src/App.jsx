@@ -84,7 +84,7 @@ function removeMySlot(dateKey, slot) {
 }
 
 function shouldShowTomorrow() {
-  return new Date().getHours() >= 20;
+  return new Date().getHours() >= 11;
 }
 
 export default function App() {
