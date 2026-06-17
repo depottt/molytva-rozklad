@@ -4,10 +4,10 @@ import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/
 
 // 🔧 ЗАЛИШ СВОЇ ДАНІ FIREBASE
 const firebaseConfig = {
-  apiKey: "ТВІЙ_API_KEY",
-  authDomain: "ТВІЙ_PROJECT.firebaseapp.com",
-  databaseURL: "https://ТВІЙ_PROJECT-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "ТВІЙ_PROJECT",
+  apiKey: "AIzaSyBPUU5pMNosYB1cSF36gTO288eLPRfojXc",
+  authDomain: "molytva-f4d28.firebaseapp.com",
+  databaseURL: "https://molytva-f4d28-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "molytva-f4d28"
 };
 
 const app = initializeApp(firebaseConfig);
